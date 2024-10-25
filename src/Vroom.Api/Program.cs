@@ -1,53 +1,100 @@
 
+using Microsoft.OpenApi.Models;
+using Serilog;
+using Vroom.Api.Endpoints;
+using Newtonsoft.Json;
+using Vroom.Api.Filter;
+
 namespace Vroom.Api
 {
     public class Program
     {
         public static void Main(string[] args)
         {
-            var builder = WebApplication.CreateBuilder(args);
+            // Configura o Serilog antes de construir o host
+            //Log.Logger = new LoggerConfiguration()
+            //    .ReadFrom.Configuration(BuildConfiguration()) // Lê configuração do appsettings.json
+            //    .WriteTo.Console() // Adicione outros sinks conforme necessário
+            //    .CreateLogger();
+            Log.Logger = new LoggerConfiguration()
+                .ReadFrom.Configuration(BuildConfiguration()) // Lê configuração do appsettings.json
+                .WriteTo.Console() // Escreve logs no console
+                .CreateLogger();
 
-            // Add services to the container.
-            builder.Services.AddAuthorization();
-
-            // Learn more about configuring Swagger/OpenAPI at https://aka.ms/aspnetcore/swashbuckle
-            builder.Services.AddEndpointsApiExplorer();
-            builder.Services.AddSwaggerGen();
-
-            var app = builder.Build();
-
-            // Configure the HTTP request pipeline.
-            if (app.Environment.IsDevelopment())
+            try
             {
-                app.UseSwagger();
-                app.UseSwaggerUI();
-            }
+                var builder = WebApplication.CreateBuilder(args);
 
-            app.UseHttpsRedirection();
+                // Adiciona o Serilog ao builder
+                builder.Host.UseSerilog();
 
-            app.UseAuthorization();
+                // Add services to the container.
+                builder.Services.AddAuthorization();
 
-            var summaries = new[]
-            {
-                "Freezing", "Bracing", "Chilly", "Cool", "Mild", "Warm", "Balmy", "Hot", "Sweltering", "Scorching"
-            };
+                // Learn more about configuring Swagger/OpenAPI at https://aka.ms/aspnetcore/swashbuckle
+                builder.Services.AddEndpointsApiExplorer();
+                //builder.Services.AddApplicationServices(builder.Configuration);
 
-            app.MapGet("/weatherforecast", (HttpContext httpContext) =>
-            {
-                var forecast = Enumerable.Range(1, 5).Select(index =>
-                    new WeatherForecast
+
+                builder.Services
+                        .AddControllers()
+                        .AddNewtonsoftJson();
+                builder.Services.AddSwaggerGen(c =>
+                {
+                    c.SwaggerDoc("v1", new OpenApiInfo
                     {
-                        Date = DateOnly.FromDateTime(DateTime.Now.AddDays(index)),
-                        TemperatureC = Random.Shared.Next(-20, 55),
-                        Summary = summaries[Random.Shared.Next(summaries.Length)]
-                    })
-                    .ToArray();
-                return forecast;
-            })
-            .WithName("GetWeatherForecast")
-            .WithOpenApi();
+                        Title = "Sistema de Manutenção de Motos",
+                        Version = "v1",
+                    });
+                    c.DocumentFilter<SwaggerTagsOrderFilter>();
+                    c.UseAllOfForInheritance();
+                    c.UseOneOfForPolymorphism();
+                });
 
-            app.Run();
+                var app = builder.Build();
+
+                //using (var scope = app.Services.CreateScope())
+                //{
+                //    var dbContext = scope.ServiceProvider.GetRequiredService<TaskDbContext>();
+                //    dbContext.Database.Migrate(); // Aplica as migrações pendentes
+                //}
+
+                // Configure the HTTP request pipeline.
+                if (app.Environment.IsDevelopment())
+                {
+                    app.UseSwagger();
+                    app.UseSwaggerUI(c =>
+                    {
+                        c.SwaggerEndpoint("/swagger/v1/swagger.json", "Sistema de Manutenção de Motos");
+                    });
+                }
+
+                app.UseHttpsRedirection();
+
+                app.UseAuthorization();
+
+                app.MapEndpoints();
+
+                app.Run();
+            }
+            catch (Exception ex)
+            {
+                Log.Fatal(ex, "Application start-up failed");
+                throw;
+            }
+            finally
+            {
+                Log.CloseAndFlush();
+            }
+        }
+
+        private static IConfiguration BuildConfiguration()
+        {
+            var configuration = new ConfigurationBuilder()
+                .AddJsonFile("appsettings.json", optional: false, reloadOnChange: true)
+                .Build();
+
+            return configuration;
         }
     }
 }
